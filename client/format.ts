@@ -1,6 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 
 import type { IssueSummary, StatusCategory } from "../shared/contracts";
+import type { SortDirection, SortField } from "../shared/settings";
 
 export const COLUMNS: { category: StatusCategory; title: string }[] = [
   { category: "new", title: "To Do" },
@@ -52,6 +53,54 @@ export function searchTextToJql(text: string): string {
   if (ISSUE_KEY.test(trimmed)) return `key = ${trimmed.toUpperCase()}`;
   if (JQL_HINT.test(trimmed)) return trimmed;
   return `text ~ "${trimmed.replace(/["\\]/g, "\\$&")}" ORDER BY updated DESC`;
+}
+
+export const SORT_FIELDS: {
+  id: SortField;
+  label: string;
+  /** JQL field, or null to keep the query's ORDER BY. */
+  jqlField: string | null;
+  /** Direction used when the user picks this field. */
+  defaultDirection: SortDirection;
+}[] = [
+  { id: "query", label: "Query order", jqlField: null, defaultDirection: "desc" },
+  { id: "updated", label: "Updated", jqlField: "updated", defaultDirection: "desc" },
+  { id: "created", label: "Created", jqlField: "created", defaultDirection: "desc" },
+  { id: "priority", label: "Priority", jqlField: "priority", defaultDirection: "desc" },
+  { id: "key", label: "Key", jqlField: "key", defaultDirection: "asc" },
+];
+
+export function sortFieldLabel(field: SortField): string {
+  return SORT_FIELDS.find((option) => option.id === field)?.label ?? field;
+}
+
+/** Index of the top-level ORDER BY in `jql`, or -1. Text in quotes is skipped. */
+function orderByIndex(jql: string): number {
+  let quote: string | null = null;
+  for (let i = 0; i < jql.length; i++) {
+    const char = jql[i];
+    if (quote !== null) {
+      if (char === "\\") i++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (/^order\s+by\b/i.test(jql.slice(i)) && (i === 0 || /[\s)]/.test(jql[i - 1]))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** Replaces the ORDER BY of `jql` with one for `field` and `direction`. "query" keeps it. */
+export function applySortOrder(jql: string, field: SortField, direction: SortDirection): string {
+  const jqlField = SORT_FIELDS.find((option) => option.id === field)?.jqlField ?? null;
+  if (jqlField === null) return jql;
+  // Issues with the same priority show the most recently updated first.
+  const tieBreak = jqlField === "priority" ? ", updated DESC" : "";
+  const orderBy = `${jqlField} ${direction.toUpperCase()}${tieBreak}`;
+  const index = orderByIndex(jql);
+  const filter = (index === -1 ? jql : jql.slice(0, index)).trim();
+  return filter === "" ? `ORDER BY ${orderBy}` : `${filter} ORDER BY ${orderBy}`;
 }
 
 export function matchesFilter(issue: IssueSummary, filter: string): boolean {

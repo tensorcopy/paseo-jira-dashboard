@@ -4,6 +4,7 @@ A [Paseo](https://paseo.sh) plugin that shows your Jira tickets.
 
 - **Board** in the sidebar. Issues are grouped into To Do, In Progress, and Done columns. On a phone or a narrow window, the columns stack.
 - **Saved queries** show as tabs: Assigned to me, Reported by me, Watching, and Recently updated. You can add your own JQL queries.
+- **Sort.** Select a field in the Sort menu: query order, Updated, Created, Priority, or Key. The button next to it changes between ascending and descending. Jira does the sort, so when there are more than 50 matches you see the first 50 in that order. Priority uses the priority order of your Jira site. The board keeps your choice.
 - **Filter and search.** Type to filter the current list. Press Enter to search Jira with free text, an issue key (`ABC-123`), or raw JQL.
 - **Jira images.** Cards and the issue detail show avatars and the issue type and priority icons from Jira. When an image cannot be loaded, the plugin shows initials or the priority name. iOS and Android cannot draw SVG icons, so they show the priority name.
 - **Issue detail** with fields, labels, the description, and the latest comments. Buttons open the issue in Jira or copy its key.

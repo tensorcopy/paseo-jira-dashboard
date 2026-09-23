@@ -275,7 +275,7 @@ function QueriesSection() {
 
   async function write(queries: typeof values.queries) {
     const selectedQuery = Math.min(values.selectedQuery, Math.max(queries.length - 1, 0));
-    return settings.save({ queries, selectedQuery }, revision);
+    return settings.save({ ...values, queries, selectedQuery }, revision);
   }
 
   return (
@@ -320,7 +320,7 @@ function QueriesSection() {
         actionLabel="Reset"
         disabled={settings.saving}
         onPress={function () {
-          void settings.save({ queries: DEFAULT_QUERIES, selectedQuery: 0 }, revision);
+          void settings.save({ ...values, queries: DEFAULT_QUERIES, selectedQuery: 0 }, revision);
         }}
       />
     </SettingsSection>

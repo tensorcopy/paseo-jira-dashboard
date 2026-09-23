@@ -6,11 +6,19 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { connectionStatus, type IssueSummary, searchIssues } from "../shared/contracts";
-import { boardSettings, DEFAULT_QUERIES } from "../shared/settings";
-import { errorText, groupByCategory, matchesFilter, searchTextToJql, statusColor } from "./format";
+import { boardSettings, DEFAULT_QUERIES, type SortDirection, type SortField } from "../shared/settings";
+import {
+  applySortOrder,
+  errorText,
+  groupByCategory,
+  matchesFilter,
+  searchTextToJql,
+  statusColor,
+} from "./format";
 import { IssueCard } from "./issue-card";
 import { IssueDetailView } from "./issue-detail";
 import { JiraSettingsContent } from "./settings-screen";
+import { SortMenu } from "./sort-menu";
 import { type Styles, useStyles } from "./styles";
 
 type Column = ReturnType<typeof groupByCategory>[number];
@@ -34,14 +42,21 @@ export function JiraBoard({ theme, layout }: PluginSurfaceProps) {
 
   const queries = board.status === "ready" ? board.values.queries : DEFAULT_QUERIES;
   const storedIndex = board.status === "ready" ? board.values.selectedQuery : 0;
+  const storedSort =
+    board.status === "ready"
+      ? { field: board.values.sortField, direction: board.values.sortDirection }
+      : { field: "query" as const, direction: "desc" as const };
   const [queryIndex, setQueryIndex] = useState<number | null>(null);
+  const [sortOrder, setSortOrder] = useState<{ field: SortField; direction: SortDirection } | null>(null);
   const [customJql, setCustomJql] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
   const activeIndex = Math.min(queryIndex ?? storedIndex, queries.length - 1);
-  const activeJql = customJql ?? queries[activeIndex]?.jql ?? "";
+  const baseJql = customJql ?? queries[activeIndex]?.jql ?? "";
+  const activeSort = sortOrder ?? storedSort;
+  const activeJql = baseJql === "" ? "" : applySortOrder(baseJql, activeSort.field, activeSort.direction);
 
   const status = useQuery({
     queryKey: ["jira", "status"],
@@ -59,10 +74,10 @@ export function JiraBoard({ theme, layout }: PluginSurfaceProps) {
     },
   });
 
-  // A new query shows a new list, so close the open issue.
+  // A new query shows a new list, so close the open issue. A new sort order keeps it open.
   useEffect(() => {
     setSelectedKey(null);
-  }, [activeJql]);
+  }, [baseJql]);
 
   const visible = useMemo(() => {
     const issues = search.data?.issues ?? [];
@@ -77,6 +92,16 @@ export function JiraBoard({ theme, layout }: PluginSurfaceProps) {
     setQueryIndex(index);
     if (board.status === "ready" && board.values.selectedQuery !== index) {
       void board.save({ ...board.values, selectedQuery: index }, board.revision);
+    }
+  }
+
+  function selectSort(field: SortField, direction: SortDirection) {
+    setSortOrder({ field, direction });
+    if (
+      board.status === "ready" &&
+      (board.values.sortField !== field || board.values.sortDirection !== direction)
+    ) {
+      void board.save({ ...board.values, sortField: field, sortDirection: direction }, board.revision);
     }
   }
 
@@ -162,6 +187,13 @@ export function JiraBoard({ theme, layout }: PluginSurfaceProps) {
               </View>
             ) : null}
           </ScrollView>
+          <SortMenu
+            theme={theme}
+            styles={styles}
+            field={activeSort.field}
+            direction={activeSort.direction}
+            onChange={selectSort}
+          />
           <TextInput
             accessibilityLabel="Filter or search issues"
             value={searchText}
@@ -179,7 +211,7 @@ export function JiraBoard({ theme, layout }: PluginSurfaceProps) {
           />
           {customJql !== null ? (
             <Text style={styles.small} numberOfLines={2} selectable>
-              JQL: {customJql}
+              JQL: {activeJql}
             </Text>
           ) : null}
         </>

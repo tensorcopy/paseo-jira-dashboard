@@ -12,6 +12,13 @@ export const SavedQuerySchema = z.object({
 });
 export type SavedQuery = z.infer<typeof SavedQuerySchema>;
 
+/** The field the board sorts on. "query" keeps the ORDER BY of the query. */
+export const SortFieldSchema = z.enum(["query", "updated", "created", "priority", "key"]);
+export type SortField = z.infer<typeof SortFieldSchema>;
+
+export const SortDirectionSchema = z.enum(["asc", "desc"]);
+export type SortDirection = z.infer<typeof SortDirectionSchema>;
+
 export const DEFAULT_QUERIES: SavedQuery[] = [
   {
     name: "Assigned to me",
@@ -60,5 +67,7 @@ export const boardSettings = defineSettings({
     queries: z.array(SavedQuerySchema).default(DEFAULT_QUERIES),
     /** Index into `queries` that the board opens on. */
     selectedQuery: z.number().int().min(0).default(0),
+    sortField: SortFieldSchema.default("query"),
+    sortDirection: SortDirectionSchema.default("desc"),
   }),
 });
