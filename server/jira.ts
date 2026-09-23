@@ -44,6 +44,17 @@ const DETAIL_FIELDS = [
 ];
 
 const REQUEST_TIMEOUT_MS = 30 * 1000;
+const IMAGE_TIMEOUT_MS = 10 * 1000;
+const IMAGE_MAX_BYTES = 512 * 1024;
+const IMAGE_MAX_REDIRECTS = 3;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"]);
+/** Public avatar hosts that Jira Cloud links to. They get no credentials. */
+const PUBLIC_IMAGE_HOSTS = [/(^|\.)atl-paas\.net$/, /^(secure|www)\.gravatar\.com$/, /^avatar-cdn\.atlassian\.com$/];
+
+export interface JiraImage {
+  uri: string;
+  mimeType: string;
+}
 const MAX_COMMENTS = 20;
 
 function stripSlash(url: string): string {
@@ -73,6 +84,69 @@ export class JiraClient {
 
   private get api(): string {
     return `${this.apiBase}/rest/api/${this.cloud ? 3 : 2}`;
+  }
+
+  /**
+   * Loads an avatar or icon as a `data:` URI. Only the site, the API base, and
+   * public Atlassian avatar hosts are allowed. The login goes only to the API base.
+   */
+  async image(rawUrl: string): Promise<JiraImage | null> {
+    let url = this.imageUrl(rawUrl);
+    for (let hop = 0; url && hop <= IMAGE_MAX_REDIRECTS; hop++) {
+      const withAuth = url.origin === new URL(this.apiBase).origin;
+      const headers: Record<string, string> = { Accept: "image/png,image/*;q=0.8" };
+      if (withAuth) headers.Authorization = (await this.authorization()).header;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, { headers, redirect: "manual", signal: controller.signal });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get("location");
+          url = location ? this.allowedImageUrl(new URL(location, url)) : null;
+          continue;
+        }
+        if (!response.ok) return null;
+        const mimeType = (response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+        if (!IMAGE_TYPES.has(mimeType)) return null;
+        if (Number(response.headers.get("content-length") ?? 0) > IMAGE_MAX_BYTES) return null;
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.length === 0 || bytes.length > IMAGE_MAX_BYTES) return null;
+        return { uri: `data:${mimeType};base64,${bytes.toString("base64")}`, mimeType };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  }
+
+  /** Maps an image URL from Jira to the address to load, or null when it is not allowed. */
+  private imageUrl(rawUrl: string): URL | null {
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      return null;
+    }
+    const site = new URL(this.siteUrl);
+    // With a separate API base, REST paths on the site must go through the API base.
+    if (url.origin === site.origin && this.apiBase !== this.siteUrl && url.pathname.startsWith("/rest/")) {
+      url = new URL(`${this.apiBase}${url.pathname}${url.search}`);
+    }
+    // Cloud issue type avatars are SVG by default; PNG draws on every platform.
+    if (url.pathname.includes("/universal_avatar/") && !url.searchParams.has("format")) {
+      url.searchParams.set("format", "png");
+    }
+    return this.allowedImageUrl(url);
+  }
+
+  private allowedImageUrl(url: URL): URL | null {
+    if (url.origin === new URL(this.apiBase).origin || url.origin === new URL(this.siteUrl).origin) {
+      return url;
+    }
+    if (url.protocol === "https:" && PUBLIC_IMAGE_HOSTS.some((host) => host.test(url.hostname))) {
+      return url;
+    }
+    return null;
   }
 
   browseUrl(key: string): string {
@@ -159,6 +233,7 @@ export class JiraClient {
     const comments: Comment[] = rawComments.slice(-MAX_COMMENTS).map((comment) => ({
       id: String(comment.id ?? ""),
       author: comment.author?.displayName ?? "Unknown",
+      authorAvatarUrl: avatarUrl(comment.author),
       created: comment.created ?? "",
       body: richTextToString(comment.body),
     }));
@@ -187,7 +262,9 @@ export class JiraClient {
       status: fields.status?.name ?? "Unknown",
       statusCategory: statusCategory(fields.status?.statusCategory?.key),
       issueType: fields.issuetype?.name ?? "Issue",
+      issueTypeIconUrl: fields.issuetype?.iconUrl ?? null,
       priority: fields.priority?.name ?? null,
+      priorityIconUrl: fields.priority?.iconUrl ?? null,
       assignee: person(fields.assignee),
       project: fields.project?.key ?? key.split("-")[0] ?? "",
       updated: fields.updated ?? "",
@@ -203,8 +280,12 @@ function person(user: RawUser | null | undefined): Person | null {
   if (!user) return null;
   return {
     name: user.displayName ?? user.name ?? "Unknown",
-    avatarUrl: user.avatarUrls?.["48x48"] ?? null,
+    avatarUrl: avatarUrl(user),
   };
+}
+
+function avatarUrl(user: RawUser | null | undefined): string | null {
+  return user?.avatarUrls?.["48x48"] ?? user?.avatarUrls?.["32x32"] ?? null;
 }
 
 async function describeFailure(response: Response): Promise<string> {
@@ -235,8 +316,8 @@ interface RawIssue {
   fields?: {
     summary?: string;
     status?: { name?: string; statusCategory?: { key?: string } };
-    issuetype?: { name?: string };
-    priority?: { name?: string } | null;
+    issuetype?: { name?: string; iconUrl?: string };
+    priority?: { name?: string; iconUrl?: string } | null;
     assignee?: RawUser | null;
     reporter?: RawUser | null;
     project?: { key?: string };

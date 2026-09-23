@@ -21,7 +21,9 @@ export const IssueSummarySchema = z.object({
   status: z.string(),
   statusCategory: StatusCategorySchema,
   issueType: z.string(),
+  issueTypeIconUrl: z.string().nullable(),
   priority: z.string().nullable(),
+  priorityIconUrl: z.string().nullable(),
   assignee: PersonSchema.nullable(),
   project: z.string(),
   updated: z.string(),
@@ -31,6 +33,7 @@ export type IssueSummary = z.infer<typeof IssueSummarySchema>;
 export const CommentSchema = z.object({
   id: z.string(),
   author: z.string(),
+  authorAvatarUrl: z.string().nullable(),
   created: z.string(),
   body: z.string(),
 });
@@ -95,6 +98,17 @@ export const saveToken = defineRpc({
   name: "jira.save-token",
   input: z.object({ token: z.string() }),
   output: z.object({ stored: z.boolean() }),
+});
+
+/** Loads one Jira image (avatar or icon) on the daemon, with the Jira login when needed. */
+export const loadImage = defineRpc({
+  name: "jira.image",
+  input: z.object({ url: z.string().url().max(2048) }),
+  output: z.object({
+    /** A `data:` URI, or null when the image cannot be loaded. */
+    uri: z.string().nullable(),
+    mimeType: z.string().nullable(),
+  }),
 });
 
 export const searchAttachments = defineRpc({

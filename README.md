@@ -5,6 +5,7 @@ A [Paseo](https://paseo.sh) plugin that shows your Jira tickets.
 - **Board** in the sidebar. Issues are grouped into To Do, In Progress, and Done columns. On a phone or a narrow window, the columns stack.
 - **Saved queries** show as tabs: Assigned to me, Reported by me, Watching, and Recently updated. You can add your own JQL queries.
 - **Filter and search.** Type to filter the current list. Press Enter to search Jira with free text, an issue key (`ABC-123`), or raw JQL.
+- **Jira images.** Cards and the issue detail show avatars and the issue type and priority icons from Jira. When an image cannot be loaded, the plugin shows initials or the priority name. iOS and Android cannot draw SVG icons, so they show the priority name.
 - **Issue detail** with fields, labels, the description, and the latest comments. Buttons open the issue in Jira or copy its key.
 - **Composer attachment.** Attach a Jira issue to an agent prompt. The agent gets a Markdown snapshot of the issue and its comments.
 - **Command Center** items: "Open Jira board" and "Jira settings".
@@ -58,6 +59,8 @@ Use **Test connection** in the settings screen to check the setup.
 ## Security
 
 Paseo plugins are trusted code that runs without a sandbox. All Jira requests run in the plugin's daemon subprocess. The app never sees the token. The plugin does not log tokens or command output.
+
+The daemon also loads the images. It loads only from the site URL, the API base URL, and the public Atlassian avatar hosts (`*.atl-paas.net`, `gravatar.com`). It sends the login only to the API base URL. It accepts only PNG, JPEG, GIF, WebP, and SVG files of 512 KB or less, and keeps them in memory for one hour.
 
 ## Layout
 

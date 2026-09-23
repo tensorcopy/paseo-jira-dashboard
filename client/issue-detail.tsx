@@ -2,18 +2,33 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { copyText, Icon, ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { loadIssue } from "../shared/contracts";
 import { errorText, relativeTime } from "./format";
 import { StatusPill } from "./issue-card";
+import { Avatar, JiraImage } from "./jira-image";
 import type { Styles } from "./styles";
 
-function Field({ styles, label, value }: { styles: Styles; label: string; value: string }) {
+function Field({
+  styles,
+  label,
+  value,
+  leading,
+}: {
+  styles: Styles;
+  label: string;
+  value: string;
+  leading?: ReactNode;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.small}>{label}</Text>
-      <Text style={styles.text}>{value}</Text>
+      <View style={styles.cardRow}>
+        {leading}
+        <Text style={styles.text}>{value}</Text>
+      </View>
     </View>
   );
 }
@@ -103,14 +118,34 @@ export function IssueDetailView({
           <Text style={styles.detailTitle}>{issue.summary}</Text>
           <View style={styles.cardRow}>
             <StatusPill theme={theme} styles={styles} issue={issue} />
+            <JiraImage url={issue.issueTypeIconUrl} size={16} label={issue.issueType} />
             <Text style={styles.small}>
               {issue.issueType} · updated {relativeTime(issue.updated)}
             </Text>
           </View>
           <View style={styles.fieldGrid}>
-            <Field styles={styles} label="Assignee" value={issue.assignee?.name ?? "Unassigned"} />
-            <Field styles={styles} label="Reporter" value={issue.reporter?.name ?? "Unknown"} />
-            <Field styles={styles} label="Priority" value={issue.priority ?? "None"} />
+            <Field
+              styles={styles}
+              label="Assignee"
+              value={issue.assignee?.name ?? "Unassigned"}
+              leading={<Avatar theme={theme} person={issue.assignee} size={24} />}
+            />
+            <Field
+              styles={styles}
+              label="Reporter"
+              value={issue.reporter?.name ?? "Unknown"}
+              leading={<Avatar theme={theme} person={issue.reporter} size={24} />}
+            />
+            <Field
+              styles={styles}
+              label="Priority"
+              value={issue.priority ?? "None"}
+              leading={
+                issue.priority ? (
+                  <JiraImage url={issue.priorityIconUrl} size={16} label={`Priority: ${issue.priority}`} />
+                ) : null
+              }
+            />
             <Field styles={styles} label="Created" value={issue.created.slice(0, 10)} />
             {issue.parent ? (
               <Field styles={styles} label="Parent" value={`${issue.parent.key} ${issue.parent.summary}`} />
@@ -137,9 +172,16 @@ export function IssueDetailView({
           ) : null}
           {issue.comments.map((comment) => (
             <View key={comment.id} style={styles.comment}>
-              <Text style={styles.small}>
-                {comment.author} · {relativeTime(comment.created)}
-              </Text>
+              <View style={styles.cardRow}>
+                <Avatar
+                  theme={theme}
+                  person={{ name: comment.author, avatarUrl: comment.authorAvatarUrl }}
+                  size={20}
+                />
+                <Text style={styles.small}>
+                  {comment.author} · {relativeTime(comment.created)}
+                </Text>
+              </View>
               <Text style={styles.text} selectable>
                 {comment.body}
               </Text>

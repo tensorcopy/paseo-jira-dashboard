@@ -4,6 +4,7 @@ import type { PluginSettings } from "@getpaseo/plugin/server";
 import type {
   connectionStatus,
   IssueDetail,
+  loadImage,
   loadIssue,
   saveToken,
   searchAttachments,
@@ -12,12 +13,15 @@ import type {
 } from "../shared/contracts";
 import type { connectionSettings } from "../shared/settings";
 import { envToken, readStoredToken, writeStoredToken } from "./credentials";
-import { JiraClient, JiraConfigError } from "./jira";
+import { JiraClient, JiraConfigError, type JiraImage } from "./jira";
 
 type ConnectionSettings = PluginSettings<(typeof connectionSettings)["schema"]>;
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/i;
 const ATTACHMENT_LIMIT = 10;
+const IMAGE_CACHE_LIMIT = 500;
+const IMAGE_TTL_MS = 60 * 60 * 1000;
+const IMAGE_FAILURE_TTL_MS = 60 * 1000;
 const DEFAULT_ATTACHMENT_JQL = "assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC";
 
 export function createHandlers(settings: ConnectionSettings) {
@@ -25,6 +29,27 @@ export function createHandlers(settings: ConnectionSettings) {
     const state = await settings.read();
     if (state.status !== "ready") throw new JiraConfigError(`Jira settings are invalid: ${state.error}`);
     return new JiraClient(state.values);
+  }
+
+  // Many cards share the same icons and avatars. Keep them in memory, and
+  // share one request per URL while it runs.
+  const images = new Map<string, { expires: number; value: Promise<JiraImage | null> }>();
+
+  function cachedImage(url: string): Promise<JiraImage | null> {
+    const now = Date.now();
+    const hit = images.get(url);
+    if (hit && hit.expires > now) return hit.value;
+    const value = client()
+      .then((jira) => jira.image(url))
+      .catch(() => null);
+    const entry = { expires: now + IMAGE_TTL_MS, value };
+    images.delete(url);
+    images.set(url, entry);
+    if (images.size > IMAGE_CACHE_LIMIT) images.delete(images.keys().next().value!);
+    void value.then((image) => {
+      if (image === null) entry.expires = Date.now() + IMAGE_FAILURE_TTL_MS;
+    });
+    return value;
   }
 
   return {
@@ -51,12 +76,18 @@ export function createHandlers(settings: ConnectionSettings) {
       return (await client()).issue(key.trim().toUpperCase());
     },
 
+    async image({ url }: RpcInput<typeof loadImage>): Promise<RpcOutput<typeof loadImage>> {
+      const image = await cachedImage(url);
+      return { uri: image?.uri ?? null, mimeType: image?.mimeType ?? null };
+    },
+
     async tokenState(_input: RpcInput<typeof tokenState>): Promise<RpcOutput<typeof tokenState>> {
       return { stored: (await readStoredToken()) !== null, env: envToken() !== null };
     },
 
     async saveToken({ token }: RpcInput<typeof saveToken>): Promise<RpcOutput<typeof saveToken>> {
       await writeStoredToken(token);
+      images.clear();
       return { stored: token.trim() !== "" };
     },
 

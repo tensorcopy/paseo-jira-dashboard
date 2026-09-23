@@ -3,6 +3,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { createHandlers } from "./server/handlers";
 import {
   connectionStatus,
+  loadImage,
   loadIssue,
   saveToken,
   searchAttachments,
@@ -19,6 +20,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(connectionStatus, handlers.status);
   server.handle(searchIssues, handlers.search);
   server.handle(loadIssue, handlers.issue);
+  server.handle(loadImage, handlers.image);
   server.handle(tokenState, handlers.tokenState);
   server.handle(saveToken, handlers.saveToken);
   server.handle(searchAttachments, handlers.attachmentSearch);
