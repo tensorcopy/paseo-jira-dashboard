@@ -1,0 +1,7 @@
+{
+  "id": "jira-dashboard",
+  "description": "Browse, search, and attach Jira tickets from Paseo.",
+  "requirements": {
+    "paseo": ">=0.9.1"
+  }
+}
