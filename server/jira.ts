@@ -118,7 +118,13 @@ export class JiraClient {
       forgetCommandToken();
       return this.requestWithSource(path, init, true);
     }
-    if (!response.ok) throw new Error(await describeFailure(response));
+    if (!response.ok) {
+      let message = await describeFailure(response);
+      if ((response.status === 401 || response.status === 403) && this.cloud && this.config.email.trim() === "") {
+        message += " Jira Cloud API tokens need the account email. Set Account email in Settings → Jira.";
+      }
+      throw new Error(message);
+    }
     return { data: (await response.json()) as T, source: auth.source };
   }
 
